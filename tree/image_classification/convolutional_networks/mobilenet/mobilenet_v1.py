@@ -41,6 +41,12 @@ class MobileNetV1(nn.Module):
             MobileNetBlock(1024, 1024, stride=1),
         )
 
+        """"
+        Ý nghĩa của Global Average Pool là:
+        - Không quan tâm vật nằm ở đâu trong ảnh.
+        - Chỉ quan tâm feature đó có xuất hiện mạnh hay không.
+        - Giảm cực nhiều tham số so với Flatten toàn bộ feature map
+        """
         self.pool = nn.AdaptiveAvgPool2d((1,1))
         self.classifier = nn.Linear(1024, num_classes)
     
@@ -48,8 +54,8 @@ class MobileNetV1(nn.Module):
         x = self.first_conv(x)
         x = self.features(x)
 
-        x = self.pool(x)
-        x = torch.flatten(x, 1)
+        x = self.pool(x)  # B, 1024, H, W -> B, 1024, 1, 1
+        x = torch.flatten(x, 1)  # B, 1024, 1, 1 -> B, 1024
 
         x = self.classifier(x)
         return x

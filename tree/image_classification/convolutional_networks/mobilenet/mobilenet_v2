@@ -1,0 +1,147 @@
+import torch
+import torch.nn as nn
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.append(str(ROOT))
+
+# MobileNetV1:
+# Depthwise 3×3
+# → Pointwise 1×1
+
+# MobileNetV2:
+# Pointwise Expansion
+# → Depthwise 3×3
+# → Pointwise Projection
+# → Residual nếu cùng shape
+
+"""
+Input: 32 channels
+Expansion: 32 → 192
+Depthwise: 192 → 192
+Projection: 192 → 32
+Residual: output + input
+"""
+
+# Conv + BatchNorm + ReLU6
+class ConvBNReLU(nn.Sequential):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, groups=1):
+        padding = kernel_size // 2
+
+        super().__init__(
+            nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, groups=groups, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU6(inplace=True),
+        )
+
+# Inverted Residual Block
+class InvertedResidual(nn.Module):
+    def __init__(self, in_channels, out_channels, stride, expand_ratio):
+        super().__init__()
+
+        hidden_channels = in_channels * expand_ratio
+
+        # Chỉ cộng residual khi shape input và output giống nhau
+        self.use_residual = (stride == 1 and in_channels == out_channels)
+
+        layers = []
+
+        # Bước 1: Expansion bằng pointwise convolution
+        if expand_ratio != 1:
+            layers.append(ConvBNReLU(in_channels, hidden_channels, kernel_size=1))
+
+        # Bước 2: Depthwise convolution
+        layers.append(ConvBNReLU(hidden_channels, hidden_channels, kernel_size=3, stride=stride, groups=hidden_channels))
+
+        # Bước 3: Projection bằng pointwise convolution
+        # Không dùng ReLU sau projection
+        layers.append(nn.Conv2d(hidden_channels, out_channels, kernel_size=1, bias=False))
+
+        layers.append(nn.BatchNorm2d(out_channels))
+
+        self.block = nn.Sequential(*layers)
+
+    def forward(self, x):
+        output = self.block(x)
+
+        if self.use_residual:
+            output = output + x
+
+        return output
+
+
+class MobileNetV2(nn.Module):
+    def __init__(self, num_classes=1000):
+        super().__init__()
+
+        # t, c, n, s
+        # t: expand ratio
+        # c: output channels
+        # n: số block lặp lại
+        # s: stride của block đầu tiên
+        configuration = [
+            [1, 16, 1, 1],
+            [6, 24, 2, 2],
+            [6, 32, 3, 2],
+            [6, 64, 4, 2],
+            [6, 96, 3, 1],
+            [6, 160, 3, 2],
+            [6, 320, 1, 1],
+        ]
+
+        input_channels = 32
+
+        # Conv đầu mạng
+        layers = [ConvBNReLU(in_channels=3, out_channels=input_channels, kernel_size=3, stride=2)]
+
+        # Tạo các Inverted Residual Block
+        for expand_ratio, output_channels, repeats, stride in configuration:
+            for block_index in range(repeats):
+                # Chỉ block đầu tiên dùng stride trong bảng
+                if block_index == 0:
+                    block_stride = stride
+                else:
+                    block_stride = 1
+
+                layers.append(InvertedResidual(in_channels=input_channels, out_channels=output_channels, stride=block_stride, expand_ratio=expand_ratio))
+
+                input_channels = output_channels
+
+        # Conv cuối mạng
+        layers.append(ConvBNReLU(in_channels=input_channels, out_channels=1280, kernel_size=1))
+
+        self.features = nn.Sequential(*layers)
+
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.classifier = nn.Linear(1280,num_classes)
+
+    def forward(self, x):
+        x = self.features(x)
+
+        x = self.pool(x)
+        x = torch.flatten(x, 1)
+
+        x = self.classifier(x)
+
+        return x
+
+
+if __name__ == "__main__":
+    x = torch.randn(2, 3, 224, 224)
+
+    model = MobileNetV2(num_classes=1000)
+
+    y = model(x)
+
+    print("Input shape :", x.shape)
+    print("Output shape:", y.shape)
+
+    total_parameters = sum(
+        parameter.numel()
+        for parameter in model.parameters()
+    )
+
+    print("Parameters:", total_parameters)
