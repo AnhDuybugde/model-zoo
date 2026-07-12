@@ -8,7 +8,7 @@ import torch.nn as nn
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.append(str(ROOT))
 
-from tree.image_classification.convolutional_networks.mobilenet.mobilenet import MobileNetBlock
+from mobilenet import MobileNetBlock
 
 class MobileNetV1(nn.Module):
     def __init__(self, num_classes=1000):

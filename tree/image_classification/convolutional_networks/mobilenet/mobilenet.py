@@ -7,9 +7,6 @@ import torch.nn as nn
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.append(str(ROOT))
 
-from tree.fundamentals.convolution.depthwise_conv import DepthwiseConv2DBlock
-from tree.fundamentals.convolution.pointwise_conv import PointwiseConv2DBlock
-
 class MobileNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
