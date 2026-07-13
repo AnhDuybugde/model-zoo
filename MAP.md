@@ -1,4 +1,4 @@
-model_zoo/
+tree/
 │
 ├── 00_fundamentals/
 │   ├── convolution/
